@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>币安市场异动 · 实时监控</title>
+<link rel="icon" href="data:,">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { scrollbar-width:thin; scrollbar-color:#2a323d #0b0e11; }
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-track { background:#0b0e11; }
+  ::-webkit-scrollbar-thumb { background:#2a323d; border-radius:4px; }
+  ::-webkit-scrollbar-thumb:hover { background:#3a4759; }
+  body { background:#0b0e11; color:#eaecef; font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif; min-height:100vh; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:640px; margin:0 auto; padding:16px 12px 40px; }
+  header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  h1 { font-size:20px; font-weight:600; letter-spacing:.5px; display:flex; align-items:center; gap:8px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:#2ebd85; box-shadow:0 0 8px #2ebd85; animation:pulse 1.6s infinite; }
+  .dot.err { background:#f6465d; box-shadow:0 0 8px #f6465d; }
+  @keyframes pulse { 50% { opacity:.35; } }
+  .meta { font-size:12px; color:#848e9c; text-align:right; line-height:1.6; }
+  .mode { font-weight:600; }
+  .mode.live { color:#2ebd85; } .mode.err { color:#f6465d; }
+  .lastmv { color:#848e9c; }
+  .tabs { display:flex; gap:8px; overflow-x:auto; padding-bottom:10px; scrollbar-width:none; }
+  .tabs::-webkit-scrollbar { display:none; }
+  .tab { flex:0 0 auto; padding:8px 16px; border-radius:16px; font-size:13px; color:#848e9c; background:#181c23; border:1px solid #232a33; cursor:pointer; transition:all .15s; user-select:none; }
+  .tab:hover { color:#eaecef; }
+  .tab:focus-visible { outline:2px solid #fcd535; outline-offset:2px; }
+  .tab.on { background:#2b3648; color:#fcd535; border-color:#3a4759; font-weight:600; }
+  .tabs.period { padding-bottom:4px; }
+  .tabs.period .tab { padding:4px 12px; font-size:12px; color:#a5adbb; background:transparent; }
+  .tabs.period .tab:hover { color:#eaecef; }
+  .tabs.period .tab.on { background:#1f2735; color:#fcd535; border-color:#39485a; }
+  .rowwrap { display:flex; align-items:center; gap:6px; margin-bottom:12px; }
+  .rowwrap .tabs { flex:1 1 auto; min-width:0; }   /* 占满剩余宽度，滚动区最大化 */
+  .dimlab { font-size:11px; color:#848e9c; flex:0 0 auto; }
+  .toolbar { display:flex; justify-content:space-between; align-items:center; margin:4px 0 12px; font-size:12px; color:#848e9c; }
+  .sound { cursor:pointer; background:#181c23; border:1px solid #232a33; color:#848e9c; border-radius:8px; padding:4px 12px; font-size:12px; transition:all .15s; }
+  .sound:focus-visible { outline:2px solid #fcd535; outline-offset:2px; }
+  .sound.on { color:#fcd535; border-color:#3a4759; }
+  .list { display:flex; flex-direction:column; gap:8px; }
+  .item { position:relative; cursor:pointer; display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto auto; grid-template-areas:"sym pctrow" "ts pricow"; gap:4px 12px; background:#12161c; border:1px solid #1e242c; border-radius:12px; padding:12px 16px; transition:border-color .2s, transform .08s; }
+  .icon { width:24px; height:24px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; vertical-align:middle; }
+  .icon.cry-emoji { font-size:28px; line-height:1; }
+  .icon.rocket-emoji { font-size:26px; line-height:1; }
+  .icon svg { display:block; }
+  .sym { grid-area:sym; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .sym b { font-size:17px; font-weight:700; letter-spacing:.3px; }
+  .tag { font-size:10px; color:#848e9c; background:#1e242c; border-radius:4px; padding:2px 8px; }
+  .ts { grid-area:ts; font-size:14px; color:#7d8597; font-variant-numeric:tabular-nums; }
+  .vol { display:block; font-size:14px; font-weight:700; color:#b7c0cc; font-variant-numeric:tabular-nums; white-space:nowrap; margin-bottom:2px; }
+  .vol .plabel { font-size:12px; font-weight:400; color:#848e9c; }
+  .pctrow { grid-area:pctrow; display:flex; align-items:center; gap:7px; justify-self:end; }
+  .pct { font-size:16px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .pct.mid { font-size:18px; }   /* 3%+ 涨跌幅略大(不超过5%大异动的22px) */
+  .up { color:#f6465d; } .down { color:#2ebd85; }
+  .pricow { grid-area:pricow; display:flex; align-items:center; justify-self:end; }
+  .price { font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; color:#b7c0cc; }
+  .price .plabel { font-size:12px; font-weight:400; color:#848e9c; }
+  .kind { font-size:13px; color:#b7c0cc; }
+  .empty { text-align:center; color:#848e9c; padding:48px 0; font-size:13px; }
+  footer { text-align:center; margin-top:16px; font-size:11px; color:#707a8a; }
+
+  /* ===== 类型下拉选择器(antd Select 交互规范 · 内联展开不遮挡) ===== */
+  .sel { position:relative; flex:1 1 auto; min-width:0; }
+  .sel.disabled { opacity:.35; pointer-events:none; }
+  .sel-btn { width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 12px; height:36px; background:#181c23; border:1px solid #232a33; border-radius:10px; font-size:13px; font-weight:600; color:#eaecef; cursor:pointer; user-select:none; transition:border-color .15s; }
+  .sel-btn:hover { border-color:#3a4759; }
+  .sel-btn:focus-visible { outline:2px solid #fcd535; outline-offset:2px; }
+  .sel-val { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sel-arrow { font-size:10px; color:#848e9c; transition:transform .2s; flex:0 0 auto; }
+  .sel.open .sel-arrow { transform:rotate(180deg); }
+  /* 菜单为独立整行、内联展开(文档流) + 3列紧凑网格: 不再浮层遮挡周期行 */
+  .sel-menu { display:none; margin:6px 0 10px; background:#181c23; border:1px solid #2a323d; border-radius:10px; padding:4px; }
+  .sel-menu.open { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:2px; animation:menuIn .15s ease; }
+  @keyframes menuIn { from { transform:translateY(-4px); opacity:0; } to { transform:none; opacity:1; } }
+  .sel-opt { display:flex; align-items:center; justify-content:center; gap:4px; padding:8px 4px; border-radius:6px; font-size:13px; color:#b7c0cc; cursor:pointer; user-select:none; white-space:nowrap; }
+  .sel-opt:hover, .sel-opt.kb-active { background:#1f2735; color:#eaecef; }
+  .sel-opt[aria-selected="true"] { color:#fcd535; font-weight:600; }
+  .sel-opt[aria-selected="true"]::after { content:"✓"; font-size:12px; font-weight:700; }
+  .tabs.disabled { opacity:.35; pointer-events:none; }
+  /* 24H榜单标签: 类型行右侧, 与类型下拉互斥的视图切换(小号tab) */
+  .tabs.ranktabs { display:flex; gap:6px; flex:0 0 auto; padding-bottom:0; }
+  .tabs.ranktabs .tab { display:inline-flex; align-items:center; padding:0 10px; height:36px; font-size:12px; }
+
+  /* ===== 24H 榜单行(复用 .item 条幅布局) ===== */
+  .rank-medal { font-size:20px; line-height:1; flex:0 0 auto; }
+  .rank-no { font-size:12px; font-weight:700; color:#848e9c; background:#1e242c; border-radius:4px; padding:2px 8px; font-variant-numeric:tabular-nums; flex:0 0 auto; }
+
+  /* ===== 5m 大异动重点标注 ===== */
+  .item.alert-up, .item.alert-down { border-width:2px; }
+  .item.alert-up { border-color:#f6465d; background:linear-gradient(100deg,#3d1418 0%,#1a1418 55%,#12161c 100%); animation:upGlow 1.8s ease-in-out 4; }
+  .item.alert-down { border-color:#2ebd85; background:linear-gradient(100deg,#0f2e24 0%,#132a1c 55%,#12161c 100%); animation:downGlow 1.8s ease-in-out 4; }
+  @keyframes upGlow { 0%,100%{ box-shadow:0 0 8px rgba(246,70,93,.22);} 50%{ box-shadow:0 0 24px rgba(246,70,93,.55);} }
+  @keyframes downGlow { 0%,100%{ box-shadow:0 0 8px rgba(46,189,133,.22);} 50%{ box-shadow:0 0 24px rgba(46,189,133,.55);} }
+  .item.alert-up .pct, .item.alert-down .pct { font-size:22px; }
+  .item.alert-up .sym b, .item.alert-down .sym b { font-size:18px; }
+  .item.alert-up .icon, .item.alert-down .icon { width:28px; height:28px; border-radius:8px; }
+  .badge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:6px; letter-spacing:.5px; flex:0 0 auto; }
+  .badge.up-badge { color:#fff; background:#f6465d; box-shadow:0 0 8px rgba(246,70,93,.5); }
+  .badge.down-badge { color:#fff; background:#2ebd85; box-shadow:0 0 8px rgba(46,189,133,.5); }
+
+  /* ===== 点击复制反馈 ===== */
+  .item:hover { border-color:#3a4759; }
+  .item.alert-up:hover { border-color:#ff7583; }
+  .item.alert-down:hover { border-color:#46e0ac; }
+  .item.copied { border-color:#fcd535; }
+  .copybadge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:6px; letter-spacing:.5px; flex:0 0 auto; animation:tipIn .18s ease; }
+  .copybadge.ok { color:#12161c; background:#fcd535; }
+  .copybadge.bad { color:#fff; background:#f6465d; }
+  @keyframes tipIn { from { transform:scale(.6); opacity:0; } to { transform:scale(1); opacity:1; }
+  .item:active { transform:scale(.992); }
+
+  /* ===== 无障碍：降低动效 ===== */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration:.01ms !important; animation-iteration-count:1 !important;
+      transition-duration:.01ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="dot" id="dot"></span>市场异动</h1>
+    <div class="meta">币安合约 · WebSocket 实时<br><span id="status">连接中…</span></div>
+  </header>
+
+  <div class="rowwrap"><span class="dimlab">类型</span>
+    <div class="sel" id="catSel">
+      <div class="sel-btn" id="catSelBtn" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="catMenu" tabindex="0">
+        <span class="sel-val" id="catSelVal">全部</span><span class="sel-arrow">▾</span>
+      </div>
+    </div>
+    <div class="tabs ranktabs" id="rankTabs" role="group" aria-label="24H榜单视图"></div>
+  </div>
+  <div class="sel-menu" id="catMenu" role="listbox" aria-label="异动类型选择"></div>
+  <div class="rowwrap"><span class="dimlab">周期</span><div class="tabs period" id="periodTabs"></div></div>
+  <div class="toolbar">
+    <span id="count"></span>
+    <span style="display:flex;gap:8px;">
+      <button class="sound" id="sound">🔔 声音关</button>
+      <button class="sound" id="feishuBtn" title="5M大异动推送飞书（双击按钮可测试推送）">📮 飞书 开</button>
+    </span>
+  </div>
+  <div class="list" id="list"></div>
+  <footer>数据来自币安公开行情接口 · 仅供个人监控参考<span id="pushStatus"></span></footer>
+</div>
+
+<script>
+const REST   = "https://www.icnguxncf.com/fapi/v1/topMovers";
+const WS_URL = "wss://fstream.yshyqxx.com/market/stream";
+const CALIBRATE_MS  = 30000;   // REST 兜底校准(30s)，WS 驱动实时，REST 防漏
+const REST_RETRY_MS = 3000;    // 初始拉取失败重试间隔
+const MAX_ITEMS     = 500;      // 内存中保留的最大条数
+const RENDER_LIMIT  = 40;       // DOM 中最多渲染的条数(性能关键, 减少卡顿)
+const FEISHU_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/6b7e0c87-9b6a-423b-8e03-2765d07a6740"; // 5M异动飞书推送
+
+const CATS = [
+  ["all","全部", e=>true],
+  ["up","涨", e=>/UP|HIGH_VOLUME_RISE/.test(e.eventType)],
+  ["down","跌", e=>/DOWN|HIGH_VOLUME_FALL/.test(e.eventType)],
+  ["pullback","冲高回落", e=>e.eventType==="PULLBACK"],
+  ["rally","探底回升", e=>e.eventType==="RALLY"],
+  ["high","新高", e=>e.eventType.includes("UP_BREAKTHROUGH")],
+  ["low","新低", e=>e.eventType.includes("DOWN_BREAKTHROUGH")],
+  ["volup","放量涨", e=>e.eventType.startsWith("HIGH_VOLUME_RISE")],
+  ["voldown","放量跌", e=>e.eventType.startsWith("HIGH_VOLUME_FALL")],
+];
+
+/* 时间周期筛选选项：m5brk = 5M周期 ∪ 今日新高/新低 组合视图 */
+const PERIODS = [
+  ["all","全部"],
+  ["5m","5M"],["2h","2H"],["1d","1D"],
+  ["m5brk","5M/新高+新低"],
+];
+
+let curCat = "all";
+let curPeriod = "all";
+let movers = [];
+let seen = new Set();
+let soundOn = false;
+let wsAlive = false;
+let lastMsgTime = 0;      // 最后收到任何WS消息的时间(watchdog依据)
+let lastMoverTs = 0;      // 最后一条异动的时间戳
+let failCount = 0;        // 连续重连失败计数
+let feishuOn = true;      // 5M大异动飞书推送开关(默认开)
+
+const $ = id => document.getElementById(id);
+
+/* ---------- 筛选 ---------- */
+/* tab 生成器：统一点击/键盘(Enter,Space)/ARIA，两行 tab 复用 */
+function makeTab(label, on, onClick){
+  const t = document.createElement("div");
+  t.className = "tab" + (on ? " on" : "");
+  t.textContent = label;
+  t.setAttribute("role", "button");
+  t.tabIndex = 0;
+  t.setAttribute("aria-pressed", on ? "true" : "false");
+  t.onclick = onClick;
+  t.onkeydown = ev=>{ if (ev.key==="Enter" || ev.key===" "){ ev.preventDefault(); onClick(); } };
+  return t;
+}
+function selectTab(container, t){   // 选中态 + aria 同步切换
+  container.querySelectorAll(".tab").forEach(x=>{
+    const me = x === t;
+    x.classList.toggle("on", me);
+    x.setAttribute("aria-pressed", me ? "true" : "false");
+  });
+}
+/* ---------- 类型下拉(9个异动类型) + 24H榜单标签(视图切换, 与类型互斥) ---------- */
+let curRank = null;        // null=异动流视图 | "up"=涨幅榜 | "down"=跌幅榜
+const isRankMode = ()=> curRank !== null;
+const selEl = $("catSel"), selBtnEl = $("catSelBtn"), selMenuEl = $("catMenu"), selValEl = $("catSelVal"), periodEl = $("periodTabs");
+let selOpen = false;
+let selOptEls = [];   // 菜单选项节点
+let selKbIdx = -1;    // 键盘高亮索引
+function labelOfCat(key){
+  const c = CATS.find(x=>x[0]===key);
+  return c ? c[1] : key;
+}
+function buildSelMenu(){
+  selMenuEl.innerHTML = "";
+  selOptEls = [];
+  const mkOpt = (key, label)=>{
+    const o = document.createElement("div");
+    o.className = "sel-opt";
+    o.setAttribute("role", "option");
+    o.tabIndex = -1;
+    o.dataset.key = key;
+    o.innerHTML = `<span>${label}</span>`;
+    o.onclick = ()=>selectCat(key);
+    selOptEls.push(o);
+    selMenuEl.appendChild(o);
+  };
+  CATS.forEach(([key,label])=>mkOpt(key,label));
+}
+function refreshSelUI(){
+  selValEl.textContent = labelOfCat(curCat);
+  selOptEls.forEach(o=>o.setAttribute("aria-selected", o.dataset.key===curCat ? "true" : "false"));
+}
+function setSelKb(idx){
+  selKbIdx = idx;
+  selOptEls.forEach((o,i)=>o.classList.toggle("kb-active", i===idx));
+}
+function openSel(open){
+  selOpen = open;
+  selEl.classList.toggle("open", open);          // 箭头旋转
+  selMenuEl.classList.toggle("open", open);      // 菜单为独立行, 自身显隐
+  selBtnEl.setAttribute("aria-expanded", open ? "true" : "false");
+  setSelKb(open ? selOptEls.findIndex(o=>o.dataset.key===curCat) : -1);
+}
+function selectCat(key){
+  curCat = key;
+  curRank = null;                 // 选中异动类型即退出榜单视图
+  openSel(false);
+  refreshSelUI();
+  refreshRankTabsUI();
+  updateFilterRows();
+  stopRankTimer();
+  render();
+}
+/* 24H榜单标签: 点击切换榜单视图, 再点已选中的即取消回到异动流 */
+function selectRank(dir){
+  curRank = (curRank === dir) ? null : dir;
+  openSel(false);
+  refreshRankTabsUI();
+  updateFilterRows();
+  if (isRankMode()){ ensureRank(); render(); }
+  else { stopRankTimer(); render(); }
+}
+selBtnEl.onclick = ()=>{ if (!isRankMode()) openSel(!selOpen); };
+/* 键盘：仅在菜单收起时拦截"打开"并阻断冒泡(防打开事件被 document 层误当菜单内导航/确认)；
+   展开后的按键冒泡至 document 统一处理(↑↓导航 / Enter确认 / Esc关闭) */
+selBtnEl.onkeydown = ev=>{
+  if (isRankMode() || selOpen) return;
+  if (ev.key==="Enter" || ev.key===" " || ev.key==="ArrowDown"){
+    ev.preventDefault();
+    ev.stopPropagation();
+    openSel(true);
+  }
+};
+document.addEventListener("click", ev=>{
+  if (selOpen && !selEl.contains(ev.target) && !selMenuEl.contains(ev.target)) openSel(false);   // 外部点击关闭
+});
+document.addEventListener("keydown", ev=>{
+  if (!selOpen) return;
+  if (ev.key==="Escape"){ openSel(false); selBtnEl.focus(); }
+  else if (ev.key==="ArrowDown" || ev.key==="ArrowUp"){
+    ev.preventDefault();
+    const n = selOptEls.length;
+    const i = ev.key==="ArrowDown" ? Math.min(selKbIdx+1, n-1) : Math.max(selKbIdx-1, 0);
+    setSelKb(i);
+  } else if (ev.key==="Enter" && selKbIdx >= 0){
+    ev.preventDefault();
+    selectCat(selOptEls[selKbIdx].dataset.key);
+  }
+});
+/* 24H榜单标签生成(复用tab统一样式, 小号) */
+const rankTabsEl = $("rankTabs");
+const rankTabEls = [];
+[["up","📈 涨幅榜"],["down","📉 跌幅榜"]].forEach(([dir,label])=>{
+  const t = makeTab(label, false, ()=>selectRank(dir));
+  t.dataset.rank = dir;
+  rankTabEls.push(t);
+  rankTabsEl.appendChild(t);
+});
+function refreshRankTabsUI(){
+  rankTabEls.forEach(t=>{
+    const on = t.dataset.rank === curRank;
+    t.classList.toggle("on", on);
+    t.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+}
+/* 榜单视图下: 类型下拉与周期行一并置灰禁用(榜单不受类型/周期筛选) */
+function updateFilterRows(){
+  const dis = isRankMode();
+  selEl.classList.toggle("disabled", dis);
+  selBtnEl.setAttribute("aria-disabled", dis ? "true" : "false");
+  periodEl.classList.toggle("disabled", dis);
+  periodEl.setAttribute("aria-disabled", dis ? "true" : "false");
+}
+buildSelMenu();
+refreshSelUI();
+refreshRankTabsUI();
+updateFilterRows();
+
+/* 时间周期筛选 */
+periodEl.setAttribute("role", "group");
+periodEl.setAttribute("aria-label", "时间周期筛选");
+PERIODS.forEach(([key,label])=>{
+  const t = makeTab(label, key==="all", ()=>{
+    if (isRankMode()) return;   // 榜单模式下周期筛选已禁用，键盘仍可激活需拦截
+    curPeriod = key;
+    selectTab(periodEl, t);
+    render();
+  });
+  periodEl.appendChild(t);
+});
+
+/* 周期匹配：all 不过滤；m5brk = 5M周期 ∪ 今日新高/新低(精确 DAY 前缀，排除周/月) */
+function periodMatch(e){
+  if (curPeriod === "all") return true;
+  if (curPeriod === "m5brk"){
+    return String(e.period||"").toLowerCase() === "5m"
+      || e.eventType === "DAY_UP_BREAKTHROUGH" || e.eventType === "DAY_DOWN_BREAKTHROUGH";
+  }
+  return String(e.period||"").toLowerCase() === curPeriod;
+}
+
+/* ---------- 工具 ---------- */
+function typeText(e){
+  const et = e.eventType, nt = e.noticeType, pd = e.period || "";
+  if (nt === "PRICE_CHANGE"){
+    const dir = et.startsWith("UP") ? "涨" : "跌";
+    const lv  = {"1":"小","2":"中","3":"大"}[et.split("_")[1]] || "";
+    return pd + lv + dir;
+  }
+  const map = {
+    DAY_UP_BREAKTHROUGH:"今日新高", DAY_DOWN_BREAKTHROUGH:"今日新低",
+    WEEK_UP_BREAKTHROUGH:"本周新高", WEEK_DOWN_BREAKTHROUGH:"本周新低",
+    MONTH_UP_BREAKTHROUGH:"月内新高", MONTH_DOWN_BREAKTHROUGH:"月内新低",
+    PULLBACK:"冲高回落", RALLY:"探底回升",
+  };
+  if (map[et]) return map[et];
+  if (et.startsWith("HIGH_VOLUME_RISE")) return "放量涨 " + pd;
+  if (et.startsWith("HIGH_VOLUME_FALL")) return "放量跌 " + pd;
+  return et;
+}
+
+/* ---------- 异动图标(SVG) ---------- */
+function iconFor(e){
+  const et = e.eventType, nt = e.noticeType;
+  const W = 'stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"';
+  const UP = '#f6465d', DOWN = '#2ebd85';
+  const arrows = {
+    1: `<path d="M7,19 L19,7 M12,7 H19 V14" ${W}/>`,
+    2: `<path d="M5,18 L12,11 M7.5,11 H12 V15.5 M14,18 L21,11 M16.5,11 H21 V15.5" ${W}/>`,
+    3: `<path d="M4,17 L9,12 M5.5,12 H9 V15.5 M10.5,17 L15.5,12 M12,12 H15.5 V15.5 M17,17 L22,12 M18.5,12 H22 V15.5" ${W}/>`,
+  };
+  const steep = `<path d="M8,21 L19,6 M13,6 H19 V12" ${W}/>`;
+  const flipOpen = '<g transform="scale(1,-1) translate(0,-26)">', flipClose = '</g>';
+  const hill = `<path d="M4,17 H8 C10,6 16,6 18,17 H22" ${W}/>`;
+  const valley = `<path d="M4,9 H8 C10,20 16,20 18,9 H22" ${W}/>`;
+  const brkUp = `<path d="M4,17 H13 L20,10 M14,10 H20 M20,10 V16" ${W}/>`;
+  let bg = '#848e9c', inner = '';
+  if (nt === "PRICE_CHANGE"){
+    const n = et.split("_")[1] || '1';
+    if (et.startsWith("UP"))         { bg = UP;   inner = arrows[n]; }
+    else                              { bg = DOWN; inner = flipOpen + arrows[n] + flipClose; }
+  } else if (et === "PULLBACK")      { bg = DOWN; inner = hill; }
+  else if (et === "RALLY")           { bg = UP;   inner = valley; }
+  else if (et.includes("UP_BREAKTHROUGH"))   { bg = UP;   inner = brkUp; }
+  else if (et.includes("DOWN_BREAKTHROUGH")) { bg = DOWN; inner = flipOpen + brkUp + flipClose; }
+  else if (et.startsWith("HIGH_VOLUME_RISE")){ bg = UP;   inner = steep; }
+  else if (et.startsWith("HIGH_VOLUME_FALL")){ bg = DOWN; inner = flipOpen + steep + flipClose; }
+  return `<span class="icon" style="background:${bg}"><svg width="18" height="18" viewBox="0 0 26 26">${inner}</svg></span>`;
+}
+/* 5m 大异动专属图标 */
+const ROCKET_ICON = `<span class="icon rocket-emoji">🚀</span>`;
+const CRY_ICON = `<span class="icon cry-emoji">😭</span>`;
+/* 去重 key：按 币种+事件类型+时间 去重(不含 id)。
+   币安对同一事件会生成多条不同 id 的记录(价格持续突破时每档生成一条)，
+   按 symbol+eventType+createTimestamp 去重可合并这类重复 */
+function keyOf(e){ return e.symbol+"|"+e.eventType+"|"+e.createTimestamp; }
+const pad2 = n => String(n).padStart(2,"0");
+function tsFmt(ms){
+  const d = new Date(ms);
+  return `${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+/* ---------- 点击复制币种名 ---------- */
+/* 优先 Clipboard API(file:// 下常被权限策略拒绝) → execCommand 兜底，保证双击打开也能复制 */
+function copySymbol(text){
+  return new Promise(res=>{
+    const legacy = ()=>{
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.cssText = "position:fixed;top:-999px;opacity:0";
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      let ok = false;
+      try{ ok = document.execCommand("copy"); }catch(_){}
+      ta.remove();
+      res(ok);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(()=>res(true)).catch(legacy);
+    } else legacy();
+  });
+}
+/* 复制反馈：条幅边框短暂高亮 + 币种名后浮现 ✓ 徽标，1.1s 自动消失 */
+function showCopyTip(item, ok){
+  const old = item.querySelector(".copybadge");
+  if (old) old.remove();   // 连点防叠加
+  item.classList.add("copied");
+  const s = document.createElement("span");
+  s.className = "copybadge " + (ok ? "ok" : "bad");
+  s.textContent = ok ? "✓ 已复制" : "✗ 复制失败";
+  item.querySelector(".sym").appendChild(s);
+  setTimeout(()=>{ item.classList.remove("copied"); s.remove(); }, 1100);
+}
+/* 绑定点击复制币种名交互(拖选文字时不触发，方便手动选择内容)
+   withKeyboard=true 时额外绑定 Enter/Space 键盘复制(榜单行需键盘可访问) */
+function attachCopy(item, symbol, withKeyboard){
+  item.title = "点击复制币种名";
+  const tryCopy = ()=>{
+    if (window.getSelection && String(window.getSelection())) return;   // 拖选文字不触发
+    copySymbol(symbol).then(ok=>showCopyTip(item, ok));
+  };
+  item.onclick = tryCopy;
+  if (withKeyboard){
+    item.tabIndex = 0;
+    item.onkeydown = ev=>{ if (ev.key==="Enter" || ev.key===" "){ ev.preventDefault(); tryCopy(); } };
+  }
+}
+
+/* ---------- 单条节点构造 ---------- */
+function isBig5m(e){
+  const v = parseFloat(e.priceChange);
+  return String(e.period||"").toLowerCase() === "5m" && isFinite(v) && Math.abs(v) >= 0.05;
+}
+function itemNode(e){
+  const raw = parseFloat(e.priceChange);
+  const pct = isFinite(raw) ? raw*100 : 0;
+  const up = pct >= 0;
+  const big = isBig5m(e);
+  let cls = "item";
+  let iconHtml = iconFor(e);
+  let badge = "";
+  if (big){
+    if (up){ cls += " alert-up"; iconHtml = ROCKET_ICON; badge = '<span class="badge up-badge">🚀 5m飙升</span>'; }
+    else   { cls += " alert-down"; iconHtml = CRY_ICON; badge = '<span class="badge down-badge">😭 5m跳水</span>'; }
+  }
+  const item = document.createElement("div");
+  item.className = cls;
+  const pctCls = "pct " + (up?"up":"down") + (big ? "" : (Math.abs(pct) >= 3 ? " mid" : ""));
+  /* 价格快照：异动检测到那一刻的价格，永远不随实时变化
+     5M大异动优先用K线异动时刻价格(_moverPrice)，普通异动用快照(_snapPrice) */
+  const pxVal = (big && typeof e._moverPrice === "number") ? e._moverPrice : e._snapPrice;
+  const px = (typeof pxVal === "number") ? fmtPrice(pxVal) : "—";
+  const qv = volMap[e.symbol];
+  const volStr = (typeof qv === "number" && isFinite(qv)) ? fmtVol(qv) : "—";
+  item.innerHTML = `
+    <div class="sym"><b>${e.symbol}</b><span class="tag">永续</span>${badge}</div>
+    <div class="ts"><span class="vol"><span class="plabel">24H：</span>${volStr}</span>${tsFmt(e.createTimestamp)}</div>
+    <div class="pctrow">
+      <span class="${pctCls}">${up?"+":""}${pct.toFixed(2)}%</span>${iconHtml}
+    </div>
+    <div class="pricow">
+      <span class="price"><span class="plabel">价格：</span>${px}</span>
+      <span class="kind">&nbsp;&nbsp;${typeText(e)}</span>
+    </div>`;
+  attachCopy(item, e.symbol, false);
+  return item;
+}
+
+/* ---------- 渲染(全量重建, 最多渲染RENDER_LIMIT条；异步回调用 scheduleRender 防抖合并) ---------- */
+let renderTimer = null;
+function scheduleRender(){
+  if (renderTimer) return;
+  renderTimer = setTimeout(()=>{ renderTimer = null; render(); }, 100);
+}
+function render(){
+  if (isRankMode()){ renderRankList(); return; }   // 榜单视图：主列表渲染涨/跌幅榜
+  const cat = CATS.find(c=>c[0]===curCat) || CATS[0];
+  const filtered = movers.filter(e=>cat[2](e) && periodMatch(e));
+  const rows = filtered.slice(0, RENDER_LIMIT);
+  const n = filtered.length;
+  $("count").textContent = n ? (n > RENDER_LIMIT ? `仅显示最新${RENDER_LIMIT}条 / 共${n}条` : `共 ${n} 条`) : "";
+  const list = $("list");
+  list.innerHTML = "";
+  if (!rows.length){
+    const d = document.createElement("div");
+    d.className = "empty"; d.textContent = "📭 当前筛选暂无异动";
+    list.appendChild(d); return;
+  }
+  const frag = document.createDocumentFragment();
+  rows.forEach(e=>frag.appendChild(itemNode(e)));
+  list.appendChild(frag);
+}
+
+/* ---------- 状态 ---------- */
+function fmtClock(ms){
+  const d = new Date(ms);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+function setStatus(mode){
+  const dot = $("dot"), st = $("status");
+  const lastMover = lastMoverTs ? ` · 最后异动 <span class="lastmv">${fmtClock(lastMoverTs)}</span>` : "";
+  if (mode === "live"){
+    dot.className = "dot";
+    st.innerHTML = `<span class="mode live">● 实时推送</span> 已连接${lastMover}`;
+  } else if (mode === "err"){
+    dot.className = "dot err";
+    st.innerHTML = `<span class="mode err">⚡ 连接中断</span> 正在重连…`;
+  } else {
+    dot.className = "dot";
+    st.textContent = "连接中…";
+  }
+}
+
+/* ---------- 声音 ---------- */
+let audioCtx;
+function beep(){
+  if (!soundOn) return;
+  try{
+    audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+    if (audioCtx.state === "suspended"){ audioCtx.resume().catch(()=>{}); }   // 浏览器自动播放策略需 resume
+    const notes = [523.25, 659.25, 783.99, 1046.50];
+    const t0 = audioCtx.currentTime;
+    notes.forEach((freq, i)=>{
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine';
+      o.frequency.value = freq;
+      const start = t0 + i * 0.15;
+      const dur = (i === notes.length - 1) ? 0.32 : 0.14;
+      o.connect(g); g.connect(audioCtx.destination);
+      g.gain.setValueAtTime(0, start);
+      g.gain.linearRampToValueAtTime(.13, start + 0.02);
+      g.gain.exponentialRampToValueAtTime(.001, start + dur);
+      o.start(start); o.stop(start + dur + 0.05);
+    });
+  }catch(_){}
+}
+$("sound").onclick = ()=>{
+  soundOn = !soundOn;
+  $("sound").textContent = soundOn ? "🔔 声音开" : "🔔 声音关";
+  $("sound").classList.toggle("on", soundOn);
+};
+
+/* ---------- 飞书推送(5M大异动) ---------- */
+$("feishuBtn").onclick = ()=>{
+  feishuOn = !feishuOn;
+  $("feishuBtn").textContent = feishuOn ? "📮 飞书 开" : "📮 飞书 关";
+  $("feishuBtn").classList.toggle("on", feishuOn);
+};
+/* 双击飞书按钮 = 手动测试推送通道(验证 file:// 下能否发出) */
+$("feishuBtn").ondblclick = ()=>{
+  sendFeishu([{symbol: "测试推送", priceChange: 0.05, openTime: Date.now(), createTimestamp: Date.now(), period: "5m", eventType: "UP_2", noticeType: "PRICE_CHANGE"}]);
+};
+/* 推送状态显示(footer)：用户可直观看到推送是否工作 */
+function markPush(ok){
+  const el = $("pushStatus");
+  if (!el) return;
+  const d = new Date();
+  el.innerHTML = ` · <span style="color:${ok?"#2ebd85":"#f6465d"}">最后推送 ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())} ${ok?"✓":"✗"}</span>`;
+}
+
+/* ---------- 价格表(网页端显示 + 飞书推送共用) ---------- */
+const TICKER_URL = "https://www.icnguxncf.com/fapi/v1/ticker/24hr";   // 24H ticker：一次取 价格+24h成交额
+const priceMap = {};   // symbol -> 当前价
+const volMap   = {};   // symbol -> 24H成交额(quoteVolume)
+async function refreshPrices(){   // 全量拉取全部合约 24h 行情(价格+成交额, 每轮轮询刷新)
+  try{
+    const ctl = new AbortController();
+    const timer = setTimeout(()=>ctl.abort(), 12000);
+    const r = await fetch(TICKER_URL, {cache: "no-store", signal: ctl.signal});
+    clearTimeout(timer);
+    const data = await r.json();
+    if (Array.isArray(data)){
+      for (const d of data){
+        if (d && d.symbol){
+          const p = parseFloat(d.lastPrice);
+          if (isFinite(p)) priceMap[d.symbol] = p;
+          const qv = parseFloat(d.quoteVolume);
+          if (isFinite(qv)) volMap[d.symbol] = qv;
+        }
+      }
+      return true;
+    }
+  }catch(_){}
+  return false;
+}
+async function fetchPrice(symbol){   // 单币补查(快照/成交额缺失时补用，一次补价格+24h成交额)
+  try{
+    const ctl = new AbortController();
+    const timer = setTimeout(()=>ctl.abort(), 5000);
+    const r = await fetch(`${TICKER_URL}?symbol=${encodeURIComponent(symbol)}`, {cache: "no-store", signal: ctl.signal});
+    clearTimeout(timer);
+    const d = await r.json();
+    if (d && d.lastPrice){
+      const p = parseFloat(d.lastPrice);
+      if (isFinite(p)){ priceMap[symbol] = p; }
+      const qv = parseFloat(d.quoteVolume);
+      if (isFinite(qv)){ volMap[symbol] = qv; }
+      return p;
+    }
+  }catch(_){}
+  return NaN;
+}
+function fmtPrice(v){
+  if (!isFinite(v)) return "—";
+  if (v >= 1000) return "$" + v.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  if (v >= 1)   return "$" + v.toLocaleString("en-US", {maximumFractionDigits: 4});
+  return "$" + v.toLocaleString("en-US", {maximumFractionDigits: 6});
+}
+/* 查询异动时刻的真实价格(用 K 线开盘价 × (1+priceChange) 计算，
+   而不是当前实时价——即使异动发生在很久前也能算准) */
+async function fetchMoverPrice(symbol, openTime, priceChange){
+  try{
+    const ctl = new AbortController();
+    const timer = setTimeout(()=>ctl.abort(), 5000);
+    const url = `https://www.icnguxncf.com/fapi/v1/klines?symbol=${encodeURIComponent(symbol)}&interval=5m&startTime=${openTime}&limit=1`;
+    const r = await fetch(url, {cache: "no-store", signal: ctl.signal});
+    clearTimeout(timer);
+    const klines = await r.json();
+    if (Array.isArray(klines) && klines.length){
+      const open = parseFloat(klines[0][1]);   // K线开盘价
+      if (isFinite(open) && open > 0){
+        return open * (1 + parseFloat(priceChange));   // 异动时刻价格 = 开盘价 × (1 + 涨跌幅)
+      }
+    }
+  }catch(_){}
+  return NaN;
+}
+async function sendFeishu(items){
+  if (!feishuOn || !items.length) return;
+  const show = items.slice(0, 5);
+  await Promise.all(show.map(async it=>{
+    /* 用 K 线计算异动时刻的真实价格：复用 ingestAll 已发起的查询避免重复请求 */
+    if (typeof it._moverPrice !== "number"){
+      if (it._moverPriceP){
+        const p = await it._moverPriceP;   // 复用 ingestAll 发起的 K 线查询
+        if (isFinite(p)) it._moverPrice = p;
+      } else {
+        const p = await fetchMoverPrice(it.symbol, it.openTime, it.priceChange);
+        if (isFinite(p)) it._moverPrice = p;
+      }
+      if (typeof it._moverPrice !== "number"){
+        it._moverPrice = (typeof it._snapPrice === "number") ? it._snapPrice : priceMap[it.symbol];   // 兑底
+      }
+    }
+    /* 24H成交额缺失时补查一次(fetchPrice 同时补价格表) */
+    if (typeof volMap[it.symbol] !== "number") await fetchPrice(it.symbol);
+  }));
+  const elements = [];
+  show.forEach((it, i)=>{
+    const pct = parseFloat(it.priceChange);
+    const up = isFinite(pct) ? pct >= 0 : true;
+    const icon = up ? "🚀" : "😭";
+    const col  = up ? "red" : "green";   // 与网页一致：红涨绿跌
+    const tag  = up ? "5m飙升" : "5m跳水";
+    const t = tsFmt(it.createTimestamp || Date.now());
+    const px = fmtPrice(it._moverPrice);   // 异动时刻的真实价格
+    const qv = volMap[it.symbol];
+    const volStr = (typeof qv === "number" && isFinite(qv)) ? fmtVol(qv) : "—";
+    const pctStr = isFinite(pct) ? (up?"+":"") + (pct*100).toFixed(2) + "%" : "—";
+    /* 与网页条幅一致：左列=币种+24H成交额+时间，右列=价格+涨跌幅+图标+类型 */
+    elements.push({
+      tag: "column_set", flex_mode: "none",
+      columns: [
+        {tag: "column", width: "weighted", weight: 3, vertical_align: "center", elements: [
+          {tag: "div", text: {tag: "lark_md", text_size: "large", content:
+            `${icon} **${it.symbol}** <font color='grey'>永续</font>\n` +
+            `<font color='grey'>24H：${volStr}</font>\n` +
+            `<font color='grey'>⏱ ${t}</font>`}}
+        ]},
+        {tag: "column", width: "weighted", weight: 2, horizontal_align: "right", vertical_align: "center", elements: [
+          {tag: "div", text: {tag: "lark_md", text_size: "large", content:
+            `<font color='${col}'>${px}</font>\n` +
+            `<font color='${col}'>${pctStr}</font> ${icon}\n` +
+            `${tag}`}}
+        ]}
+      ]
+    });
+    if (i < show.length - 1) elements.push({tag: "hr"});
+  });
+  if (items.length > 5){
+    elements.push({tag: "div", text: {tag: "lark_md", text_size: "normal", content: `<font color='grey'>… 等 ${items.length} 条</font>`}});
+  }
+  elements.push({tag: "hr"});
+  elements.push({tag: "div", text: {tag: "lark_md", text_size: "normal", content: `<font color='grey'>数据来源：币安公开行情 · 仅供个人监控参考</font>`}});
+  /* 卡片头部标题(红框区域)：单条=「币种永续 涨跌%」，多条=首条信息 + 等N条 */
+  const f0 = show[0];
+  const f0p = parseFloat(f0.priceChange);
+  const f0pct = isFinite(f0p) ? (f0p>=0?"+":"") + (f0p*100).toFixed(2) + "%" : "—";
+  const headerTitle = (items.length === 1)
+    ? `🚨 ${f0.symbol}永续 ${f0pct}`
+    : `🚨 ${f0.symbol}永续 ${f0pct} 等${items.length}条`;
+  const card = {
+    schema: "2.0",
+    header: {template: "orange", title: {tag: "plain_text", content: headerTitle}},
+    body: {elements}
+  };
+  const payload = JSON.stringify({msg_type: "interactive", card});
+  /* 双通道发送：
+     ① cors fetch(可读响应判断成败) → 成功即完成
+     ② 失败(如 file:// 下 CORS 被阻) → no-cors + text/plain 重试
+        (no-cors 模式下请求一定能发出，飞书按 body 内容解析 JSON 不看 Content-Type，已验证可行) */
+  const ctl = new AbortController();
+  const timer = setTimeout(()=>ctl.abort(), 8000);
+  fetch(FEISHU_WEBHOOK, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: payload,
+    credentials: "omit",
+    signal: ctl.signal
+  }).then(r=>r.json()).then(d=>{
+    clearTimeout(timer);
+    if (d && d.code === 0){ markPush(true); console.log("[飞书] 已推送", items.length, "条 5M异动"); }
+    else { markPush(false); console.warn("[飞书] 推送失败", d); }
+  }).catch(()=>{
+    clearTimeout(timer);
+    /* cors 模式被阻 → no-cors 重试(text/plain 简单请求不发预检) */
+    fetch(FEISHU_WEBHOOK, {
+      method: "POST",
+      headers: {"Content-Type": "text/plain"},
+      body: payload,
+      mode: "no-cors"
+    }).then(()=>{
+      markPush(true);   /* no-cors 读不到响应，请求已发出即视为成功 */
+      console.log("[飞书] 已推送(no-cors)", items.length, "条 5M异动");
+    }).catch(e=>{
+      markPush(false);
+      console.warn("[飞书] 推送异常", e);
+    });
+  });
+}
+
+/* ---------- 数据处理 ---------- */
+function pushItem(e){
+  const k = keyOf(e);
+  if (seen.has(k)) return false;
+  seen.add(k);
+  /* 限制 seen 大小，防止长期运行内存无限增长 */
+  if (seen.size > 2500) seen = new Set(Array.from(seen).slice(-1500));
+  movers.push(e);
+  return true;
+}
+function ingestAll(list, silent){
+  let added = 0, newMatch = 0;
+  const new5m = [];   // 本轮新增的 5M 大异动(待飞书推送)
+  const cat = CATS.find(c=>c[0]===curCat) || CATS[0];   // 榜单模式下回落到"全部"，后台异动照常入库
+  /* 新异动判定基线：用全局最新异动时间戳，省去每轮 O(n) 扫描 movers 数组 */
+  const base = lastMoverTs;
+  (list||[]).forEach(e=>{
+    if (pushItem(e)){
+      added++;
+      /* ★ 价格快照：异动被检测到时立即记录当时价格，之后永远不变 */
+      if (e._snapPrice === undefined){
+        const p = priceMap[e.symbol];
+        if (p !== undefined){
+          e._snapPrice = p;   // 价格表有则直接快照
+        } else {
+          e._snapPrice = null;   // 价格表没有则异步补查一次(只查一次)
+          fetchPrice(e.symbol).then(pp=>{
+            if (isFinite(pp)){ e._snapPrice = pp; scheduleRender(); }
+          });
+        }
+      }
+      if (cat[2](e) && periodMatch(e) && typeof e.createTimestamp === "number" && e.createTimestamp > base){
+        newMatch++;
+      }
+      /* 收集新增的 5M 大异动用于飞书推送(初始拉取 silent=true 不推历史) */
+      if (isBig5m(e) && feishuOn && !silent) new5m.push(e);
+      /* 5M 大异动：异步计算异动时刻价格(K线精确值)，promise 存到对象上供 sendFeishu 复用 */
+      if (isBig5m(e) && e._moverPrice === undefined){
+        e._moverPrice = null;
+        e._moverPriceP = fetchMoverPrice(e.symbol, e.openTime, e.priceChange).then(p=>{
+          if (isFinite(p)) e._moverPrice = p;
+          return p;
+        });
+        e._moverPriceP.then(()=>{ scheduleRender(); }).catch(()=>{});
+      }
+    }
+  });
+  /* 仅在有新增时才排序+裁剪(无新增时数组已是有序的)，减少每轮无谓 sort 开销 */
+  if (added && movers.length){
+    movers.sort((a,b)=>b.createTimestamp - a.createTimestamp);
+    if (movers.length > MAX_ITEMS) movers = movers.slice(0, MAX_ITEMS);
+  }
+  if (added){
+    if (!isRankMode()) scheduleRender();   // 用防抖合并 WS+REST 多源快速连发，避免无谓 DOM 重建
+    if (!silent && newMatch > 0 && !isRankMode()) beep();
+  }
+  if (new5m.length) sendFeishu(new5m);
+  if (movers.length){
+    const top = movers[0].createTimestamp;
+    if (typeof top === "number" && isFinite(top)) lastMoverTs = top;
+    setStatus("live");
+  }
+  return added;
+}
+
+/* ---------- REST(兜底数据源) ---------- */
+async function restFetch(){
+  /* 加时间戳参数强制绕过浏览器/服务器缓存，避免返回旧数据 */
+  const url = REST + (REST.includes("?") ? "&" : "?") + "_t=" + Date.now();
+  const ctl = new AbortController();
+  const timer = setTimeout(()=>ctl.abort(), 15000);   // 15s 超时，防请求挂死阻塞轮询
+  try{
+    const r = await fetch(url, {cache: "no-store", signal: ctl.signal});
+    const data = await r.json();
+    return Array.isArray(data) ? data : [];
+  } finally { clearTimeout(timer); }
+}
+let restBusy = false;      // REST 并发防重
+let restAttempt = 0;
+/* REST 拉取(兜底数据源)，WS 实时流为主：
+   先刷价格表再入库(快照价格准确)；返回完整 promise 链，restBusy 在链跑完才释放。
+   silent=true：启动/断线补偿，静音不推历史，失败按 REST_RETRY_MS 退避重试；
+   silent=false：30s 定时校准，失败静默等下一轮。 */
+function fetchMovers(silent){
+  if (restBusy) return;
+  restBusy = true;
+  restFetch().then(list=>{
+    restAttempt = 0;
+    return refreshPrices().then(()=>{ ingestAll(list, silent); });
+  }).catch(()=>{
+    if (silent){
+      restAttempt++;
+      setTimeout(()=>fetchMovers(true), REST_RETRY_MS * Math.min(restAttempt, 5));
+    }
+  }).finally(()=>{ restBusy = false; });
+}
+
+/* ---------- WebSocket 实时(保活心跳 + topMovers 实时异动流) ---------- */
+/* topMovers 在市场安静时长时间无推送, 会被服务端当空闲连接断开。
+   同一连接加订 btcusdt@aggTrade 保活流(每秒都有消息);
+   watchdog: 超过60秒无任何消息判定连接已死, 主动重连。 */
+const WATCHDOG_MS = 60000;
+let ws = null;
+/* ★ WS topMovers 批量入库：200ms 内的推送合并为一批，避免高频逐条触发 render/推送 */
+let wsBuffer = [];
+let wsBufferTimer = null;
+function wsIngest(mover){
+  if (!mover.symbol || !mover.eventType || !mover.createTimestamp) return;
+  wsBuffer.push(mover);
+  if (!wsBufferTimer){
+    wsBufferTimer = setTimeout(()=>{
+      wsBufferTimer = null;
+      const batch = wsBuffer;
+      wsBuffer = [];
+      ingestAll(batch, false);   // silent=false: 实时新异动 → 响声提示+飞书推送
+    }, 200);
+  }
+}
+function connectWS(){
+  try{ if (ws) { ws.onclose = null; ws.close(); } }catch(_){}
+  ws = new WebSocket(WS_URL);
+  ws.onopen = ()=>{
+    wsAlive = true;
+    lastMsgTime = Date.now();
+    /* 订阅 topMovers 实时异动流(秒级逐条推送) + btcusdt@aggTrade 保活心跳；
+       REST 30s 校准降级为断线补偿兜底，实时性完全由 WS 驱动 */
+    ws.send(JSON.stringify({method:"SUBSCRIBE", params:["topMovers", "btcusdt@aggTrade"], id:1}));
+    setStatus("live");
+    if (!movers.length) fetchMovers(true);   // 仅首次/断线后补偿，避免与启动拉取重复
+  };
+  ws.onmessage = ev=>{
+    lastMsgTime = Date.now();   // 保活心跳
+    if (failCount) failCount = 0;
+    /* ★ 实时解析 topMovers 推送(WS 短字段→REST 长字段映射) */
+    try{
+      const msg = JSON.parse(ev.data);
+      if (msg && msg.stream === "topMovers" && msg.data){
+        const d = msg.data;
+        wsIngest({
+          id: d.i,
+          createTimestamp: d.c || d.E,
+          eventType: d.e,
+          noticeType: d.n,
+          period: d.P || "",
+          openTime: d.o,
+          priceChange: d.p,
+          symbol: d.s,
+        });
+      }
+    }catch(_){}
+  };
+  ws.onclose = ()=>{
+    wsAlive = false;
+    setStatus("err");
+    failCount = Math.min(failCount + 1, 5);
+    const delay = [3000, 6000, 12000, 24000, 30000][Math.min(failCount-1, 4)];
+    setTimeout(()=>{ if (!wsAlive) connectWS(); }, delay);
+  };
+  ws.onerror = ()=>{ try{ ws.close(); }catch(_){} };
+}
+
+/* ---------- watchdog: 静默断线检测 ---------- */
+setInterval(()=>{
+  if (!wsAlive) return;
+  if (Date.now() - lastMsgTime > WATCHDOG_MS){
+    try{ ws.close(); }catch(_){}   // 触发 onclose -> 快速重连
+  }
+}, 15000);
+
+/* ---------- 定时校准(30s, 以 REST 为准) ---------- */
+setInterval(()=>{ fetchMovers(false); }, CALIBRATE_MS);
+
+/* ---------- 启动: 初始 REST 拉取 + WS 实时 ---------- */
+fetchMovers(true);
+connectWS();
+
+/* ---------- 24H 合约涨跌幅榜(数据源: fapi/v1/ticker/24hr 排序) ---------- */
+const RANK_URL     = "https://www.icnguxncf.com/fapi/v1/ticker/24hr";
+const RANK_SIZE    = 20;        // 每榜条数
+const RANK_MIN_VOL = 1e6;       // 24H成交额门槛 $100万, 过滤无量刷榜小币
+const RANK_REFRESH = 30000;     // 选中榜单期间自动刷新间隔
+const RANK_STALE_MS = 20000;    // 缓存超过此时长则重新拉取
+let rankRows = { up: [], down: [] };
+let rankTs = 0;
+let rankErr = false;
+let rankTimer = null;
+
+/* 只保留 USDT 本位永续: 排除交割合约(如 BTCUSDT_250926)、USDC 结算对、非标符号(如"龙虾USDT")、股票杠杆代币(CSOP前缀) */
+const RANK_RE = /^[A-Z0-9]+USDT$/, CSOP_RE = /^CSOP/;
+function rankFilter(d){
+  return RANK_RE.test(d.symbol) && !CSOP_RE.test(d.symbol) && parseFloat(d.quoteVolume) >= RANK_MIN_VOL;
+}
+async function fetchRank(){
+  const ctl = new AbortController();
+  const timer = setTimeout(()=>ctl.abort(), 15000);
+  try{
+    const r = await fetch(RANK_URL + "?_t=" + Date.now(), {cache:"no-store", signal: ctl.signal});
+    const data = await r.json();
+    if (!Array.isArray(data)) return false;
+    const rows = data.filter(rankFilter).map(d=>({
+      symbol: d.symbol,
+      pct: parseFloat(d.priceChangePercent) || 0,
+      last: parseFloat(d.lastPrice) || 0,
+      vol: parseFloat(d.quoteVolume) || 0,
+    }));
+    rows.sort((a,b)=>b.pct - a.pct);
+    rankRows.up = rows.slice(0, RANK_SIZE);
+    rankRows.down = rows.slice(-RANK_SIZE).reverse();   // 最惨在前
+    rankTs = Date.now();
+    return true;
+  }catch(_){ return false; }
+  finally{ clearTimeout(timer); }
+}
+function fmtVol(v){   // 成交额中文单位: 亿/万, 200M -> 2亿
+  if (!isFinite(v) || v < 0) return "—";
+  if (v >= 1e8){
+    const y = v / 1e8;
+    return parseFloat(y.toFixed(2)) + "亿";
+  }
+  if (v >= 1e4){
+    const w = v / 1e4;
+    return parseFloat(w.toFixed(1)) + "万";
+  }
+  return String(Math.round(v));
+}
+/* 榜单行节点：复用 .item 条幅布局，前三名奖牌/其余名次徽标，红涨绿跌 */
+function rankItemNode(r, i){
+  const item = document.createElement("div");
+  item.className = "item rank-item";
+  item.title = "点击复制币种名";
+  const medals = ["🥇","🥈","🥉"];
+  const noHtml = i < 3
+    ? `<span class="rank-medal">${medals[i]}</span>`
+    : `<span class="rank-no">${i+1}</span>`;
+  const up = r.pct >= 0;
+  const volStr = fmtVol(r.vol);
+  item.innerHTML = `
+    <div class="sym">${noHtml}<b>${r.symbol}</b><span class="tag">永续</span></div>
+    <div class="ts"><span class="vol"><span class="plabel">24H：</span>${volStr}</span></div>
+    <div class="pctrow"><span class="pct mid ${up?"up":"down"}">${up?"+":""}${r.pct.toFixed(2)}%</span></div>
+    <div class="pricow"><span class="price">${fmtPrice(r.last)}</span></div>`;
+  attachCopy(item, r.symbol, true);
+  return item;
+}
+/* 榜单渲染进主列表(类型下拉选中 涨幅榜/跌幅榜 时) */
+function renderRankList(){
+  const rows = rankRows[curRank];
+  const name = curRank === "up" ? "24H涨幅榜" : "24H跌幅榜";
+  $("count").textContent = rows.length
+    ? `${name} TOP${rows.length} · ${fmtClock(rankTs)} 更新`
+    : (rankErr ? "✗ 榜单拉取失败" : "⏳ 榜单加载中…");
+  const list = $("list");
+  list.innerHTML = "";
+  if (!rows.length){
+    const d = document.createElement("div");
+    d.className = "empty";
+    if (rankErr){
+      d.textContent = "✗ 榜单拉取失败，点击重试";
+      d.style.cursor = "pointer";
+      d.onclick = refreshRankNow;
+    } else d.textContent = "⏳ 榜单加载中…";
+    list.appendChild(d);
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  rows.forEach((r,i)=>frag.appendChild(rankItemNode(r,i)));
+  list.appendChild(frag);
+}
+async function refreshRankNow(){
+  rankErr = !(await fetchRank());
+  if (isRankMode()) render();
+}
+function stopRankTimer(){
+  if (rankTimer){ clearInterval(rankTimer); rankTimer = null; }
+}
+/* 选中榜单：数据过期即拉取 + 期间30s自动刷新；切回异动类型即停止 */
+function ensureRank(){
+  if (!rankTs || Date.now() - rankTs > RANK_STALE_MS) refreshRankNow();
+  stopRankTimer();
+  rankTimer = setInterval(refreshRankNow, RANK_REFRESH);
+}
+</script>
+</body>
+</html>
