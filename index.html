@@ -570,9 +570,17 @@ $("sound").onclick = ()=>{
   $("sound").classList.toggle("on", soundOn);
 };
 /* 测试铃声按钮：单击=正常提示(aa) 双击=5m大涨大跌(zzz)。
+   双击会先触发两次单击→用延时取消单击, 保证双击只播zzz不先播aa；
    不依赖 soundOn 开关，随时可自检；点击产生的用户手势也会顺带解锁后续自动播放 */
-$("testSnd").onclick = ()=>{ try{ sndNormal.currentTime=0; const p=sndNormal.play(); if(p&&p.catch)p.catch(()=>{}); }catch(_){} };
-$("testSnd").ondblclick = ()=>{ try{ sndBig.currentTime=0; const p=sndBig.play(); if(p&&p.catch)p.catch(()=>{}); }catch(_){} };
+let testTimer = null;
+$("testSnd").onclick = ()=>{
+  if (testTimer) clearTimeout(testTimer);
+  testTimer = setTimeout(()=>{ try{ sndNormal.currentTime=0; const p=sndNormal.play(); if(p&&p.catch)p.catch(()=>{}); }catch(_){} }, 280);
+};
+$("testSnd").ondblclick = ()=>{
+  if (testTimer) clearTimeout(testTimer);   // 取消即将触发的单击aa
+  try{ sndBig.currentTime=0; const p=sndBig.play(); if(p&&p.catch)p.catch(()=>{}); }catch(_){}
+};
 
 /* ---------- 飞书推送(5M大异动) ---------- */
 $("feishuBtn").onclick = ()=>{
