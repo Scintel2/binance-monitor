@@ -549,6 +549,8 @@ function setStatus(mode){
 
 /* ---------- 声音(本地铃声): 正常提示 aa.mp3 / 5m大涨大跌 ZZZ.mp3 ---------- */
 const sndNormal = $("sndNormal"), sndBig = $("sndBig");
+let lastBigTs = 0;                  // 上次 5m 大异动铃声(zzz)播放时间
+const BIG_SUPPRESS_MS = 5000;       // 5m大异动后5秒内抑制普通aa提示, 防"5m大涨大跌时aa也响"重叠
 function playSound(el){
   if (!soundOn || !el) return;
   try{
@@ -557,8 +559,11 @@ function playSound(el){
     if (p && p.catch) p.catch(()=>{});
   }catch(_){}
 }
-function playNormal(){ playSound(sndNormal); }   // 正常提示
-function playBig(){ playSound(sndBig); }         // 5分钟大涨大跌
+function playNormal(){
+  if (Date.now() - lastBigTs < BIG_SUPPRESS_MS) return;   // 刚播过5m大异动铃声, 5秒内跳过普通aa提示
+  playSound(sndNormal);   // 正常提示
+}
+function playBig(){ lastBigTs = Date.now(); playSound(sndBig); }   // 5分钟大涨大跌
 $("sound").onclick = ()=>{
   soundOn = !soundOn;
   $("sound").textContent = soundOn ? "🔔 声音开" : "🔔 声音关";
