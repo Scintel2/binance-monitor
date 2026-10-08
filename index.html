@@ -148,6 +148,9 @@
   </div>
   <div class="list" id="list"></div>
   <footer>数据来自币安公开行情接口 · 仅供个人监控参考<span id="pushStatus"></span></footer>
+  <!-- 本地铃声: 正常提示 aa.mp3 / 5m大涨大跌 ZZZ.mp3 (与 HTML 同目录, file:// 相对路径最稳) -->
+  <audio id="sndNormal" src="aa.mp3" preload="auto"></audio>
+  <audio id="sndBig" src="ZZZ.mp3" preload="auto"></audio>
 </div>
 
 <script>
@@ -543,29 +546,18 @@ function setStatus(mode){
   }
 }
 
-/* ---------- 声音 ---------- */
-let audioCtx;
-function beep(){
-  if (!soundOn) return;
+/* ---------- 声音(本地铃声): 正常提示 aa.mp3 / 5m大涨大跌 ZZZ.mp3 ---------- */
+const sndNormal = $("sndNormal"), sndBig = $("sndBig");
+function playSound(el){
+  if (!soundOn || !el) return;
   try{
-    audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
-    if (audioCtx.state === "suspended"){ audioCtx.resume().catch(()=>{}); }   // 浏览器自动播放策略需 resume
-    const notes = [523.25, 659.25, 783.99, 1046.50];
-    const t0 = audioCtx.currentTime;
-    notes.forEach((freq, i)=>{
-      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-      o.type = 'sine';
-      o.frequency.value = freq;
-      const start = t0 + i * 0.15;
-      const dur = (i === notes.length - 1) ? 0.32 : 0.14;
-      o.connect(g); g.connect(audioCtx.destination);
-      g.gain.setValueAtTime(0, start);
-      g.gain.linearRampToValueAtTime(.13, start + 0.02);
-      g.gain.exponentialRampToValueAtTime(.001, start + dur);
-      o.start(start); o.stop(start + dur + 0.05);
-    });
+    el.currentTime = 0;            // 连续触发时从头播
+    const p = el.play();            // 首次需用户点"声音开"产生交互后自动播放才被允许
+    if (p && p.catch) p.catch(()=>{});
   }catch(_){}
 }
+function playNormal(){ playSound(sndNormal); }   // 正常提示
+function playBig(){ playSound(sndBig); }         // 5分钟大涨大跌
 $("sound").onclick = ()=>{
   soundOn = !soundOn;
   $("sound").textContent = soundOn ? "🔔 声音开" : "🔔 声音关";
@@ -773,6 +765,7 @@ function pushItem(e){
 }
 function ingestAll(list, silent){
   let added = 0, newMatch = 0;
+  let newBig5 = false;            // 本轮是否有新增 5M 大异动(独立于飞书开关, 决定铃声 zzz)
   const new5m = [];   // 本轮新增的 5M 大异动(待飞书推送)
   const cat = CATS.find(c=>c[0]===curCat) || CATS[0];   // 榜单模式下回落到"全部"，后台异动照常入库
   /* 新异动判定基线：用全局最新异动时间戳，省去每轮 O(n) 扫描 movers 数组 */
@@ -797,6 +790,8 @@ function ingestAll(list, silent){
       }
       /* 收集新增的 5M 大异动用于飞书推送(初始拉取 silent=true 不推历史) */
       if (isBig5m(e) && feishuOn && !silent) new5m.push(e);
+      /* 本轮新增的 5M 大异动 → 用 zzz 铃声(与飞书开关无关) */
+      if (isBig5m(e) && !silent) newBig5 = true;
       /* 5M 大异动：异步计算异动时刻价格(K线精确值)，promise 存到对象上供 sendFeishu 复用 */
       if (isBig5m(e) && e._moverPrice === undefined){
         e._moverPrice = null;
@@ -815,7 +810,10 @@ function ingestAll(list, silent){
   }
   if (added){
     if (!isRankMode()) scheduleRender();   // 用防抖合并 WS+REST 多源快速连发，避免无谓 DOM 重建
-    if (!silent && newMatch > 0 && !isRankMode()) beep();
+    /* 铃声: 本轮有 5M 大异动 → zzz; 否则普通异动 → aa */
+    if (!silent && newMatch > 0 && !isRankMode()){
+      if (newBig5) playBig(); else playNormal();
+    }
   }
   if (new5m.length) sendFeishu(new5m);
   if (movers.length){
