@@ -143,6 +143,7 @@
     <span id="count"></span>
     <span style="display:flex;gap:8px;">
       <button class="sound" id="sound">🔔 声音关</button>
+      <button class="sound" id="testSnd" title="试播铃声：单击=正常提示(aa) 双击=5m大涨大跌(zzz)">🔊 测试铃声</button>
       <button class="sound" id="feishuBtn" title="5M大异动推送飞书（双击按钮可测试推送）">📮 飞书 开</button>
     </span>
   </div>
@@ -563,6 +564,10 @@ $("sound").onclick = ()=>{
   $("sound").textContent = soundOn ? "🔔 声音开" : "🔔 声音关";
   $("sound").classList.toggle("on", soundOn);
 };
+/* 测试铃声按钮：单击=正常提示(aa) 双击=5m大涨大跌(zzz)。
+   不依赖 soundOn 开关，随时可自检；点击产生的用户手势也会顺带解锁后续自动播放 */
+$("testSnd").onclick = ()=>{ try{ sndNormal.currentTime=0; const p=sndNormal.play(); if(p&&p.catch)p.catch(()=>{}); }catch(_){} };
+$("testSnd").ondblclick = ()=>{ try{ sndBig.currentTime=0; const p=sndBig.play(); if(p&&p.catch)p.catch(()=>{}); }catch(_){} };
 
 /* ---------- 飞书推送(5M大异动) ---------- */
 $("feishuBtn").onclick = ()=>{
