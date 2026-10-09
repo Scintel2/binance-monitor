@@ -828,9 +828,10 @@ function ingestAll(list, silent){
   }
   if (added){
     if (!isRankMode()) scheduleRender();   // 用防抖合并 WS+REST 多源快速连发，避免无谓 DOM 重建
-    /* 铃声: 本轮有 5M 大异动 → zzz; 否则普通异动 → aa */
-    if (!silent && newMatch > 0 && !isRankMode()){
-      if (newBig5) playBig(); else playNormal();
+    /* 铃声: 5M大异动无条件响zzz(不受当前筛选/普通计数门控, 否则筛选下会漏); 否则有普通新异动响aa */
+    if (!silent && !isRankMode()){
+      if (newBig5) playBig();
+      else if (newMatch > 0) playNormal();
     }
   }
   if (new5m.length) sendFeishu(new5m);
